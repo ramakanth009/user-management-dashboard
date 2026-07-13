@@ -1,4 +1,4 @@
-import React, { createContext, useReducer, useContext, useEffect } from 'react';
+import React, { createContext, useReducer, useContext, useEffect, useMemo } from 'react';
 import * as api from '../services/api';
 
 const initialState = {
@@ -11,7 +11,7 @@ const initialState = {
   sortField: 'id',
   sortAsc: true,
   currentPage: 1,
-  pageSize: 25,
+  pageSize: 10,
   isFilterActive: false,
 };
 
@@ -47,7 +47,10 @@ const UserContext = createContext();
 export const UserProvider = ({ children }) => {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  // fetchs users on mount
+  // Destructure state outside useMemo
+  const { users, searchTerm, filters, sortField, sortAsc, filteredUsers, isFilterActive } = state;
+
+  // Fetch users on mount only
   useEffect(() => {
     const fetchUsers = async () => {
       dispatch({ type: 'SET_LOADING', payload: true });
@@ -65,13 +68,16 @@ export const UserProvider = ({ children }) => {
     fetchUsers();
   }, []);
 
-  // recalculate filtered & sorted list whenever dependencies changed
-  useEffect(() => {
-    let result = [...state.users];
+  // Compute filtered users using useMemo
+  const computed = useMemo(() => {
+    let result = [...users];
 
-    // search
-    if (state.searchTerm.trim()) {
-      const s = state.searchTerm.trim().toLowerCase();
+    const hasSearchTerm = searchTerm.trim().length > 0;
+    const hasFilter = filters.firstName || filters.lastName || filters.email || filters.department;
+
+    // Search
+    if (hasSearchTerm) {
+      const s = searchTerm.trim().toLowerCase();
       result = result.filter((u) =>
         u.firstName.toLowerCase().includes(s) ||
         u.lastName.toLowerCase().includes(s) ||
@@ -81,10 +87,9 @@ export const UserProvider = ({ children }) => {
       );
     }
 
-    // filters
-    const { firstName, lastName, email, department } = state.filters;
-    const hasFilter = firstName || lastName || email || department;
+    // Filters
     if (hasFilter) {
+      const { firstName, lastName, email, department } = filters;
       result = result.filter((u) => {
         const match = (val, filter) =>
           !filter || val.toLowerCase().includes(filter.toLowerCase());
@@ -97,8 +102,7 @@ export const UserProvider = ({ children }) => {
       });
     }
 
-    // sort
-    const { sortField, sortAsc } = state;
+    // Sort
     result.sort((a, b) => {
       let va = a[sortField] ?? '';
       let vb = b[sortField] ?? '';
@@ -109,12 +113,23 @@ export const UserProvider = ({ children }) => {
       return 0;
     });
 
-    dispatch({ type: 'SET_FILTERED', payload: result });
-    dispatch({
-      type: 'SET_FILTER_ACTIVE',
-      payload: hasFilter || !!state.searchTerm.trim(),
-    });
-  }, [state]);
+    const isActive = hasFilter || hasSearchTerm;
+
+    return { filteredUsers: result, isFilterActive: isActive };
+  }, [users, searchTerm, filters, sortField, sortAsc]); // Explicit dependencies
+
+  // Update filteredUsers in state when computed changes
+  useEffect(() => {
+    const { filteredUsers: newFilteredUsers, isFilterActive: newIsFilterActive } = computed;
+    
+    // Only update if changed
+    if (JSON.stringify(newFilteredUsers) !== JSON.stringify(filteredUsers)) {
+      dispatch({ type: 'SET_FILTERED', payload: newFilteredUsers });
+    }
+    if (isFilterActive !== newIsFilterActive) {
+      dispatch({ type: 'SET_FILTER_ACTIVE', payload: newIsFilterActive });
+    }
+  }, [computed, filteredUsers, isFilterActive]);
 
   const value = { state, dispatch };
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

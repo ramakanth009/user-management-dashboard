@@ -11,5 +11,7 @@ export function getPageItems(items, page, pageSize) {
 }
 
 export function getTotalPages(items, pageSize) {
-  return Math.ceil(items.length / pageSize) || 1;
+  const count = typeof items === 'number' ? items : (items?.length ?? 0);
+  if (!count || !pageSize) return 0;
+  return Math.ceil(count / pageSize);
 }
